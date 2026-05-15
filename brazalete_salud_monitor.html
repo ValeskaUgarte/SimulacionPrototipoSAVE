@@ -78,6 +78,20 @@
       .mini-log { margin-top: 12px; max-height: 150px; overflow-y: auto; }
       .log-line { font-size: 12px; color: #64748b; display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid #e2e8f0; }
       .log-time { color: #94a3b8; flex-shrink: 0; font-weight: 500; }
+
+      /* Badge de modo simulador local */
+      .modo-local-badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-left: 8px;
+        background: #f1f5f9;
+        color: #64748b;
+        vertical-align: middle;
+        letter-spacing: 0.04em;
+      }
     </style>
 </head>
 <body>
@@ -103,9 +117,9 @@
 
   <div class="modo-row">
     <span class="modo-label">Cambiar modo simulador:</span>
-    <button class="modo-btn active-normal" id="btn-normal" onclick="cambiarModoRemoto('normal')">Normal</button>
-    <button class="modo-btn" id="btn-alerta" onclick="cambiarModoRemoto('alerta')">Alerta</button>
-    <button class="modo-btn" id="btn-critico" onclick="cambiarModoRemoto('critico')">Crítico</button>
+    <button class="modo-btn active-normal" id="btn-normal" onclick="cambiarModo('normal')">Normal</button>
+    <button class="modo-btn" id="btn-alerta" onclick="cambiarModo('alerta')">Alerta</button>
+    <button class="modo-btn" id="btn-critico" onclick="cambiarModo('critico')">Crítico</button>
   </div>
 
   <div class="main-grid">
@@ -145,6 +159,46 @@ let portadorActivo = "001";
 let ultimosDatosReales = null;
 let historialNiveles = [];
 
+// ── Estado de modo independiente por portador (002, 003, 004) ──────────────
+// El portador 001 siempre sigue el modo del servidor Python.
+// Los demás tienen su propio modo local controlado por los botones.
+const modoLocal = {
+  "002": "normal",
+  "003": "normal",
+  "004": "normal"
+};
+
+// ── Botones de modo: actualiza UI de botones ───────────────────────────────
+function actualizarBotonesModo(modo) {
+  document.getElementById("btn-normal").className = "modo-btn" + (modo === "normal" ? " active-normal" : "");
+  document.getElementById("btn-alerta").className = "modo-btn" + (modo === "alerta" ? " active-alerta" : "");
+  document.getElementById("btn-critico").className = "modo-btn" + (modo === "critico" ? " active-critico" : "");
+}
+
+// ── Punto de entrada del clic en los botones ──────────────────────────────
+function cambiarModo(modo) {
+  const modoNombre = { normal: "NORMAL", alerta: "ALERTA", critico: "CRITICO" }[modo];
+  actualizarBotonesModo(modo);
+
+  if (portadorActivo === "001") {
+    // Usuario 001: enviar al servidor Python igual que antes
+    agregarAlLog(`Cambio a modo ${modoNombre} (Python)`);
+    fetch('http://localhost:8080/cambiar_modo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modo: modo })
+    }).catch(() => {});
+  } else {
+    // Usuarios 002-004: cambiar modo local inmediatamente
+    modoLocal[portadorActivo] = modo;
+    agregarAlLog(`Cambio a modo ${modoNombre} (local: ${PORTADORES[portadorActivo].nombre})`);
+    // Refrescar datos de inmediato con el nuevo modo
+    const datos = obtenerDatosLocales(portadorActivo);
+    actualizarInterfazConDatosLocales(datos, portadorActivo);
+  }
+}
+
+// ── Renderizar tarjetas de portadores ─────────────────────────────────────
 function renderPortadores() {
   const grid = document.getElementById("portador-grid");
   grid.innerHTML = Object.entries(PORTADORES).map(([id, p]) => `
@@ -156,39 +210,211 @@ function renderPortadores() {
   `).join('');
 }
 
-async function selPortador(id) {
+// ── Seleccionar portador ──────────────────────────────────────────────────
+function selPortador(id) {
   portadorActivo = id;
   renderPortadores();
-  
+
   if (id === "001") {
+    // Mostrar modo del servidor (no hay modo local para 001)
+    // Los botones quedan en la posición que tenían (modo del servidor)
     if (ultimosDatosReales) {
       actualizarInterfazConDatosReales(ultimosDatosReales);
     }
   } else {
-    const datosLocales = obtenerDatosLocales(id);
-    actualizarInterfazConDatosLocales(datosLocales, id);
+    // Sincronizar botones con el modo local guardado del portador
+    actualizarBotonesModo(modoLocal[id]);
+    const datos = obtenerDatosLocales(id);
+    actualizarInterfazConDatosLocales(datos, id);
   }
-  
+
   agregarAlLog(`Cambio a portador: ${PORTADORES[id].nombre}`);
 }
 
-async function cambiarModoRemoto(modo) {
-  const modoNombre = {normal:"NORMAL", alerta:"ALERTA", critico:"CRITICO"}[modo];
-  agregarAlLog(`Cambio manual a modo ${modoNombre}`);
-  
-  document.getElementById("btn-normal").className = "modo-btn" + (modo === "normal" ? " active-normal" : "");
-  document.getElementById("btn-alerta").className = "modo-btn" + (modo === "alerta" ? " active-alerta" : "");
-  document.getElementById("btn-critico").className = "modo-btn" + (modo === "critico" ? " active-critico" : "");
-  
-  try {
-    await fetch('http://localhost:8080/cambiar_modo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ modo: modo })
-    });
-  } catch(e) { console.log("Simulador no disponible"); }
+// ── Generador de datos locales con modo configurable ─────────────────────
+function obtenerDatosLocales(portadorId) {
+  const random = (min, max) => min + Math.random() * (max - min);
+  const modo = modoLocal[portadorId] || "normal";
+
+  // ── Rangos por modo ──────────────────────────────────────────────────────
+  // Cada portador tiene condiciones distintas → los parámetros relevantes
+  // escalan según su condición médica al entrar en modos alerta/crítico.
+
+  if (portadorId === "002") {
+    // Ana Torres — Asma: parámetro crítico = SpO2
+    let spo2, pulso, temp, sist, diast, glucosa;
+    if (modo === "normal") {
+      spo2    = random(96, 99);
+      pulso   = random(70, 90);
+      temp    = random(36.2, 37.0);
+      sist    = random(108, 122); diast = random(68, 80);
+      glucosa = random(85, 110);
+    } else if (modo === "alerta") {
+      spo2    = random(91, 94);   // hipoxemia moderada
+      pulso   = random(95, 115);
+      temp    = random(37.2, 38.2);
+      sist    = random(118, 135); diast = random(75, 90);
+      glucosa = random(90, 120);
+    } else { // critico
+      spo2    = random(85, 90);   // hipoxemia severa
+      pulso   = random(120, 145);
+      temp    = random(38.5, 39.8);
+      sist    = random(135, 155); diast = random(88, 100);
+      glucosa = random(95, 130);
+    }
+
+    const nivel = spo2 < 90 ? "CRITICO" : spo2 < 93 ? "ALERTA" : spo2 < 95 ? "PRECAUCION" : "NORMAL";
+    const alertas = [];
+    if (spo2 < 90)      alertas.push(`🔴 CRÍTICO: SpO2 ${Math.round(spo2)}% — Hipoxemia severa. EMERGENCIA.`);
+    else if (spo2 < 93) alertas.push(`🔶 ALERTA: SpO2 ${Math.round(spo2)}% — Hipoxemia moderada. Contactar médico.`);
+    else if (spo2 < 95) alertas.push(`⚠ PRECAUCIÓN: SpO2 ${Math.round(spo2)}% — Saturación baja.`);
+    if (pulso > 120)    alertas.push(`🔶 ALERTA: Pulso ${Math.round(pulso)} bpm — Taquicardia.`);
+
+    return {
+      nivel, modo,
+      resumen: nivel === "NORMAL"
+        ? `✅ Ana Torres: Todos los parámetros normales.`
+        : nivel === "PRECAUCION"
+          ? `⚠ Ana Torres: SpO2 ${Math.round(spo2)}% — Vigilar respiración.`
+          : nivel === "ALERTA"
+            ? `🔶 Ana Torres: ALERTA — Hipoxemia moderada. Contactar médico.`
+            : `🔴 Ana Torres: EMERGENCIA — Hipoxemia severa.`,
+      alertas,
+      sensores: {
+        pulso_bpm: pulso, temperatura_c: parseFloat(temp.toFixed(1)),
+        presion_sistolica: sist, presion_diastolica: diast,
+        spo2_porcentaje: spo2, glucosa_mgdl: glucosa
+      }
+    };
+  }
+
+  if (portadorId === "003") {
+    // Miguel Soto — Arritmia + Hipertensión: parámetros críticos = PA + pulso
+    let sist, diast, pulso, temp, spo2, glucosa;
+    if (modo === "normal") {
+      sist    = random(128, 142); diast = random(82, 92);
+      pulso   = random(68, 88);
+      temp    = random(36.0, 36.9);
+      spo2    = random(95, 98);
+      glucosa = random(90, 115);
+    } else if (modo === "alerta") {
+      sist    = random(155, 170); diast = random(98, 110);
+      pulso   = random(110, 130); // taquiarritmia
+      temp    = random(36.5, 37.5);
+      spo2    = random(93, 96);
+      glucosa = random(100, 130);
+    } else { // critico
+      sist    = random(175, 200); diast = random(112, 130);
+      pulso   = random(140, 165); // arritmia severa
+      temp    = random(37.0, 38.5);
+      spo2    = random(89, 93);
+      glucosa = random(110, 150);
+    }
+
+    const nivelPA = sist > 175 ? "CRITICO" : sist > 155 ? "ALERTA" : sist > 135 ? "PRECAUCION" : "NORMAL";
+    const nivelP  = pulso > 140 ? "CRITICO" : pulso > 110 ? "ALERTA" : pulso > 90 ? "PRECAUCION" : "NORMAL";
+    const niveles = ["NORMAL","PRECAUCION","ALERTA","CRITICO"];
+    const nivelIdx = Math.max(niveles.indexOf(nivelPA), niveles.indexOf(nivelP));
+    const nivel = niveles[nivelIdx];
+
+    const alertas = [];
+    if (sist > 175)      alertas.push(`🔴 CRÍTICO: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg — Crisis hipertensiva. EMERGENCIA.`);
+    else if (sist > 155) alertas.push(`🔶 ALERTA: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg — Hipertensión significativa.`);
+    else if (sist > 135) alertas.push(`⚠ PRECAUCIÓN: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg.`);
+    if (pulso > 140)     alertas.push(`🔴 CRÍTICO: Pulso ${Math.round(pulso)} bpm — Arritmia severa.`);
+    else if (pulso > 110)alertas.push(`🔶 ALERTA: Pulso ${Math.round(pulso)} bpm — Taquiarritmia.`);
+    else if (pulso > 90) alertas.push(`⚠ PRECAUCIÓN: Pulso ${Math.round(pulso)} bpm — Ligeramente elevado.`);
+    if (sist > 175 && pulso > 130) alertas.push(`🔴 CRÍTICO: Riesgo de ACV — Presión + pulso elevados simultáneamente.`);
+
+    return {
+      nivel, modo,
+      resumen: nivel === "NORMAL"
+        ? `✅ Miguel Soto: Todos los parámetros normales.`
+        : nivel === "PRECAUCION"
+          ? `⚠ Miguel Soto: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg.`
+          : nivel === "ALERTA"
+            ? `🔶 Miguel Soto: ALERTA — Hipertensión y pulso elevados.`
+            : `🔴 Miguel Soto: EMERGENCIA — Crisis hipertensiva.`,
+      alertas,
+      sensores: {
+        pulso_bpm: pulso, temperatura_c: parseFloat(temp.toFixed(1)),
+        presion_sistolica: sist, presion_diastolica: diast,
+        spo2_porcentaje: spo2, glucosa_mgdl: glucosa
+      }
+    };
+  }
+
+  if (portadorId === "004") {
+    // Roberto López — Persona sana
+    let pulso, temp, sist, diast, spo2, glucosa, nivel, alertas = [];
+    if (modo === "normal") {
+      pulso   = random(62, 80);
+      temp    = random(36.2, 36.8);
+      sist    = random(108, 120); diast = random(68, 78);
+      spo2    = random(97, 99);
+      glucosa = random(82, 100);
+      nivel   = "NORMAL";
+    } else if (modo === "alerta") {
+      pulso   = random(105, 125);
+      temp    = random(37.9, 38.8);
+      sist    = random(148, 162); diast = random(94, 106);
+      spo2    = random(92, 95);
+      glucosa = random(60, 68);   // hipoglucemia
+      nivel   = "ALERTA";
+      alertas = [
+        `🔶 ALERTA: Pulso ${Math.round(pulso)} bpm — Taquicardia.`,
+        `🔶 ALERTA: Temperatura ${temp.toFixed(1)}°C — Fiebre.`,
+        `🔶 ALERTA: Glucosa ${Math.round(glucosa)} mg/dL — Hipoglucemia moderada.`
+      ];
+    } else { // critico
+      pulso   = random(148, 170);
+      temp    = random(39.8, 41.0);
+      sist    = random(172, 195); diast = random(110, 128);
+      spo2    = random(84, 89);
+      glucosa = random(48, 56);   // hipoglucemia severa
+      nivel   = "CRITICO";
+      alertas = [
+        `🔴 CRÍTICO: Pulso ${Math.round(pulso)} bpm — Taquicardia severa.`,
+        `🔴 CRÍTICO: Temperatura ${temp.toFixed(1)}°C — Fiebre severa.`,
+        `🔴 CRÍTICO: SpO2 ${Math.round(spo2)}% — Hipoxemia severa.`,
+        `🔴 CRÍTICO: Glucosa ${Math.round(glucosa)} mg/dL — Hipoglucemia severa. EMERGENCIA.`
+      ];
+    }
+
+    return {
+      nivel, modo,
+      resumen: nivel === "NORMAL"
+        ? `✅ Roberto López: Todos los parámetros normales.`
+        : nivel === "ALERTA"
+          ? `🔶 Roberto López: ALERTA MÉDICA — Contactar médico.`
+          : `🔴 Roberto López: EMERGENCIA MÉDICA.`,
+      alertas,
+      sensores: {
+        pulso_bpm: pulso, temperatura_c: parseFloat(temp.toFixed(1)),
+        presion_sistolica: sist, presion_diastolica: diast,
+        spo2_porcentaje: spo2, glucosa_mgdl: glucosa
+      }
+    };
+  }
+
+  // Fallback
+  return {
+    nivel: "NORMAL", modo: "normal",
+    resumen: "Sin datos",
+    alertas: [],
+    sensores: { pulso_bpm: 70, temperatura_c: 36.5, presion_sistolica: 115, presion_diastolica: 75, spo2_porcentaje: 97, glucosa_mgdl: 90 }
+  };
 }
 
+// ── Actualización automática para portadores locales (cada 4 s) ───────────
+setInterval(() => {
+  if (portadorActivo !== "001") {
+    const datos = obtenerDatosLocales(portadorActivo);
+    actualizarInterfazConDatosLocales(datos, portadorActivo);
+  }
+}, 4000);
+
+// ── Polling al servidor Python para portador 001 (cada 2 s) ──────────────
 async function obtenerDatosReales() {
   try {
     const response = await fetch('http://localhost:8080/estado');
@@ -205,195 +431,128 @@ async function obtenerDatosReales() {
   }
 }
 
-function obtenerDatosLocales(portadorId) {
-    const random = (min, max) => min + Math.random() * (max - min);
-    
-    if (portadorId === "002") {
-        let spo2 = random(88, 98);
-        let nivel = spo2 < 90 ? "CRITICO" : (spo2 < 93 ? "ALERTA" : (spo2 < 95 ? "PRECAUCION" : "NORMAL"));
-        let alertas = [];
-        if (spo2 < 90) alertas = [`🔴 CRÍTICO: SpO2 ${Math.round(spo2)}%`];
-        else if (spo2 < 93) alertas = [`🔶 ALERTA: SpO2 ${Math.round(spo2)}%`];
-        else if (spo2 < 95) alertas = [`⚠ SpO2 ${Math.round(spo2)}%`];
-        
-        return {
-            nivel: nivel,
-            resumen: `Ana Torres: SpO2 ${Math.round(spo2)}%`,
-            alertas: alertas,
-            sensores: {
-                pulso_bpm: random(75, 100),
-                temperatura_c: random(36.2, 37.2).toFixed(1),
-                presion_sistolica: random(110, 125),
-                presion_diastolica: random(70, 85),
-                spo2_porcentaje: spo2,
-                glucosa_mgdl: random(85, 110)
-            }
-        };
-    }
-    
-    if (portadorId === "003") {
-        let sist = random(130, 175);
-        let diast = random(85, 110);
-        let nivel = sist > 170 ? "CRITICO" : (sist > 155 ? "ALERTA" : (sist > 135 ? "PRECAUCION" : "NORMAL"));
-        let alertas = [];
-        if (sist > 170) alertas = [`🔴 CRÍTICO: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`];
-        else if (sist > 155) alertas = [`🔶 ALERTA: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`];
-        else if (sist > 135) alertas = [`⚠ Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`];
-        
-        return {
-            nivel: nivel,
-            resumen: `Miguel Soto: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`,
-            alertas: alertas,
-            sensores: {
-                pulso_bpm: random(65, 95),
-                temperatura_c: random(36.0, 37.0).toFixed(1),
-                presion_sistolica: sist,
-                presion_diastolica: diast,
-                spo2_porcentaje: random(94, 98),
-                glucosa_mgdl: random(90, 120)
-            }
-        };
-    }
-    
-    if (portadorId === "004") {
-        return {
-            nivel: "NORMAL",
-            resumen: "Roberto López: Todos los parámetros normales",
-            alertas: [],
-            sensores: {
-                pulso_bpm: random(65, 80),
-                temperatura_c: random(36.2, 36.8).toFixed(1),
-                presion_sistolica: random(110, 120),
-                presion_diastolica: random(70, 80),
-                spo2_porcentaje: random(96, 99),
-                glucosa_mgdl: random(85, 100)
-            }
-        };
-    }
-    
-    return {
-        nivel: "NORMAL",
-        resumen: "Sin datos",
-        alertas: [],
-        sensores: { pulso_bpm: 70, temperatura_c: 36.5, presion_sistolica: 115, presion_diastolica: 75, spo2_porcentaje: 97, glucosa_mgdl: 90 }
-    };
-}
-
-// Agrega esto para que los datos se actualicen cada 4 segundos
-setInterval(() => {
-    if (portadorActivo !== "001") {
-        const datos = obtenerDatosLocales(portadorActivo);
-        actualizarInterfazConDatosLocales(datos, portadorActivo);
-    }
-}, 4000);
-
+// ── Render: datos reales (portador 001 via Python) ────────────────────────
 function actualizarInterfazConDatosReales(data) {
   const s = data.datos_raw?.sensores || {};
   const nivel = data.nivel || "NORMAL";
   const nivelNum = { "NORMAL":0, "PRECAUCION":1, "ALERTA":2, "CRITICO":3 }[nivel] || 0;
-  
-  document.getElementById("val-pulso").innerHTML = Math.round(s.pulso_bpm || 0);
-  document.getElementById("val-temp").innerHTML = (s.temperatura_c || 0).toFixed(1);
+
+  document.getElementById("val-pulso").innerHTML   = Math.round(s.pulso_bpm || 0);
+  document.getElementById("val-temp").innerHTML    = (s.temperatura_c || 0).toFixed(1);
   document.getElementById("val-presion").innerHTML = `${Math.round(s.presion_sistolica || 0)}/${Math.round(s.presion_diastolica || 0)}`;
-  document.getElementById("val-spo2").innerHTML = Math.round(s.spo2_porcentaje || 0);
+  document.getElementById("val-spo2").innerHTML    = Math.round(s.spo2_porcentaje || 0);
   document.getElementById("val-glucosa").innerHTML = Math.round(s.glucosa_mgdl || 0);
-  document.getElementById("val-accel").innerHTML = "0.05";
-  
-  document.getElementById("bar-pulso").style.width = Math.min(100, (s.pulso_bpm || 60) / 200 * 100) + "%";
-  document.getElementById("bar-pulso").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-temp").style.width = Math.min(100, ((s.temperatura_c || 36) - 34) / 8 * 100) + "%";
-  document.getElementById("bar-temp").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-presion").style.width = Math.min(100, ((s.presion_sistolica || 120) - 80) / 140 * 100) + "%";
-  document.getElementById("bar-presion").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-spo2").style.width = Math.min(100, (s.spo2_porcentaje || 97) / 100 * 100) + "%";
-  document.getElementById("bar-spo2").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-glucosa").style.width = Math.min(100, ((s.glucosa_mgdl || 90) - 50) / 300 * 100) + "%";
-  document.getElementById("bar-glucosa").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  
-  const cards = ["card-pulso", "card-temp", "card-presion", "card-spo2", "card-glucosa"];
-  cards.forEach(c => document.getElementById(c).className = "sensor-card" + (nivelNum > 0 ? " level-"+nivelNum : ""));
-  
-  const leds = ["led-normal","led-precaucion","led-alerta","led-critico"];
-  const tags = ["tag-normal","tag-precaucion","tag-alerta","tag-critico"];
-  const nombres = ["NORMAL","PRECAUCIÓN","ALERTA","CRÍTICO"];
-  
-  document.getElementById("led").className = "led " + leds[nivelNum];
-  document.getElementById("alert-tag").className = "alert-level-tag " + tags[nivelNum];
-  document.getElementById("alert-tag").innerHTML = nombres[nivelNum];
+  document.getElementById("val-accel").innerHTML   = "0.05";
+
+  _actualizarBarras(s, nivelNum);
+  _actualizarCards(nivelNum);
+  _actualizarLED(nivelNum);
+
   document.getElementById("alert-resumen").innerHTML = data.resumen || `Carlos Mendoza: ${nivel}`;
-  
+
   const alertasDiv = document.getElementById("alert-items");
   if (data.alertas && data.alertas.length > 0) {
-    alertasDiv.innerHTML = data.alertas.map(a => `<div class="alert-item"><div class="ai-dot dot-${a.nivel === "CRITICO" ? 3 : a.nivel === "ALERTA" ? 2 : 1}"></div><div class="ai-msg">${a.mensaje || a.parametro + ": " + a.valor}</div></div>`).join('');
+    alertasDiv.innerHTML = data.alertas.map(a =>
+      `<div class="alert-item"><div class="ai-dot dot-${a.nivel === "CRITICO" ? 3 : a.nivel === "ALERTA" ? 2 : 1}"></div>
+       <div class="ai-msg">${a.mensaje || a.parametro + ": " + a.valor}</div></div>`
+    ).join('');
   } else {
     alertasDiv.innerHTML = '<div class="no-alerts">✅ Sin alertas activas</div>';
   }
-  
+
   document.getElementById("header-sub").innerHTML = `Carlos Mendoza · 58 años · Datos reales del simulador`;
-  
+
   historialNiveles.push({ nivel: nivelNum, hora: new Date().toLocaleTimeString() });
   if (historialNiveles.length > 20) historialNiveles.shift();
   actualizarHistorial();
 }
 
+// ── Render: datos locales (portadores 002-004) ────────────────────────────
 function actualizarInterfazConDatosLocales(datos, portadorId) {
   const s = datos.sensores;
   const p = PORTADORES[portadorId];
   const nivelNum = { "NORMAL":0, "PRECAUCION":1, "ALERTA":2, "CRITICO":3 }[datos.nivel] || 0;
-  
-  document.getElementById("val-pulso").innerHTML = Math.round(s.pulso_bpm);
-  document.getElementById("val-temp").innerHTML = s.temperatura_c.toFixed(1);
+
+  document.getElementById("val-pulso").innerHTML   = Math.round(s.pulso_bpm);
+  document.getElementById("val-temp").innerHTML    = parseFloat(s.temperatura_c).toFixed(1);
   document.getElementById("val-presion").innerHTML = `${Math.round(s.presion_sistolica)}/${Math.round(s.presion_diastolica)}`;
-  document.getElementById("val-spo2").innerHTML = Math.round(s.spo2_porcentaje);
+  document.getElementById("val-spo2").innerHTML    = Math.round(s.spo2_porcentaje);
   document.getElementById("val-glucosa").innerHTML = Math.round(s.glucosa_mgdl);
-  
-  document.getElementById("bar-pulso").style.width = Math.min(100, s.pulso_bpm / 200 * 100) + "%";
-  document.getElementById("bar-pulso").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-temp").style.width = Math.min(100, (s.temperatura_c - 34) / 8 * 100) + "%";
-  document.getElementById("bar-temp").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-presion").style.width = Math.min(100, (s.presion_sistolica - 80) / 140 * 100) + "%";
-  document.getElementById("bar-presion").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-spo2").style.width = Math.min(100, s.spo2_porcentaje / 100 * 100) + "%";
-  document.getElementById("bar-spo2").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  document.getElementById("bar-glucosa").style.width = Math.min(100, (s.glucosa_mgdl - 50) / 300 * 100) + "%";
-  document.getElementById("bar-glucosa").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
-  
-  const cards = ["card-pulso", "card-temp", "card-presion", "card-spo2", "card-glucosa"];
-  cards.forEach(c => document.getElementById(c).className = "sensor-card" + (nivelNum > 0 ? " level-"+nivelNum : ""));
-  
-  const leds = ["led-normal","led-precaucion","led-alerta","led-critico"];
-  const tags = ["tag-normal","tag-precaucion","tag-alerta","tag-critico"];
-  const nombres = ["NORMAL","PRECAUCIÓN","ALERTA","CRÍTICO"];
-  
-  document.getElementById("led").className = "led " + leds[nivelNum];
-  document.getElementById("alert-tag").className = "alert-level-tag " + tags[nivelNum];
-  document.getElementById("alert-tag").innerHTML = nombres[nivelNum];
+  document.getElementById("val-accel").innerHTML   = "0.05";
+
+  _actualizarBarras(s, nivelNum);
+  _actualizarCards(nivelNum);
+  _actualizarLED(nivelNum);
+
   document.getElementById("alert-resumen").innerHTML = datos.resumen;
-  
+
   const alertasDiv = document.getElementById("alert-items");
   if (datos.alertas && datos.alertas.length > 0) {
-    alertasDiv.innerHTML = datos.alertas.map(msg => `<div class="alert-item"><div class="ai-dot dot-1"></div><div class="ai-msg">${msg}</div></div>`).join('');
+    alertasDiv.innerHTML = datos.alertas.map(msg => {
+      const dot = msg.includes("CRÍTICO") ? 3 : msg.includes("ALERTA") ? 2 : 1;
+      return `<div class="alert-item"><div class="ai-dot dot-${dot}"></div><div class="ai-msg">${msg}</div></div>`;
+    }).join('');
   } else {
     alertasDiv.innerHTML = '<div class="no-alerts">✅ Sin alertas activas</div>';
   }
-  
-  document.getElementById("header-sub").innerHTML = `${p.nombre} · ${p.edad} años · Datos locales (simulador propio)`;
+
+  const modoLabel = { normal: "Normal", alerta: "Alerta", critico: "Crítico" }[datos.modo] || "Normal";
+  document.getElementById("header-sub").innerHTML =
+    `${p.nombre} · ${p.edad} años · Simulador local <span class="modo-local-badge">MODO: ${modoLabel.toUpperCase()}</span>`;
+
+  historialNiveles.push({ nivel: nivelNum, hora: new Date().toLocaleTimeString() });
+  if (historialNiveles.length > 20) historialNiveles.shift();
+  actualizarHistorial();
+}
+
+// ── Helpers de UI compartidos ─────────────────────────────────────────────
+function _actualizarBarras(s, nivelNum) {
+  const color = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+
+  document.getElementById("bar-pulso").style.width      = Math.min(100, (s.pulso_bpm || 60) / 200 * 100) + "%";
+  document.getElementById("bar-pulso").style.background = color;
+  document.getElementById("bar-temp").style.width       = Math.min(100, ((s.temperatura_c || 36) - 34) / 8 * 100) + "%";
+  document.getElementById("bar-temp").style.background  = color;
+  document.getElementById("bar-presion").style.width    = Math.min(100, ((s.presion_sistolica || 120) - 80) / 140 * 100) + "%";
+  document.getElementById("bar-presion").style.background = color;
+  document.getElementById("bar-spo2").style.width       = Math.min(100, (s.spo2_porcentaje || 97)) + "%";
+  document.getElementById("bar-spo2").style.background  = color;
+  document.getElementById("bar-glucosa").style.width    = Math.min(100, ((s.glucosa_mgdl || 90) - 50) / 300 * 100) + "%";
+  document.getElementById("bar-glucosa").style.background = color;
+}
+
+function _actualizarCards(nivelNum) {
+  ["card-pulso","card-temp","card-presion","card-spo2","card-glucosa"].forEach(c => {
+    document.getElementById(c).className = "sensor-card" + (nivelNum > 0 ? " level-" + nivelNum : "");
+  });
+}
+
+function _actualizarLED(nivelNum) {
+  const leds   = ["led-normal","led-precaucion","led-alerta","led-critico"];
+  const tags   = ["tag-normal","tag-precaucion","tag-alerta","tag-critico"];
+  const nombres = ["NORMAL","PRECAUCIÓN","ALERTA","CRÍTICO"];
+  document.getElementById("led").className             = "led " + leds[nivelNum];
+  document.getElementById("alert-tag").className       = "alert-level-tag " + tags[nivelNum];
+  document.getElementById("alert-tag").innerHTML       = nombres[nivelNum];
 }
 
 function actualizarHistorial() {
   const track = document.getElementById("hist-track");
-  track.innerHTML = historialNiveles.map(h => `<div class="hist-bar hb-${h.nivel}" style="height:${6 + (h.nivel / 3) * 30}px" title="${h.hora}"></div>`).join('');
+  track.innerHTML = historialNiveles.map(h =>
+    `<div class="hist-bar hb-${h.nivel}" style="height:${6 + (h.nivel / 3) * 30}px" title="${h.hora}"></div>`
+  ).join('');
 }
 
 function agregarAlLog(mensaje) {
   const logDiv = document.getElementById("mini-log");
-  const line = document.createElement("div");
+  const line   = document.createElement("div");
   line.className = "log-line";
   line.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString()}</span><span>${mensaje}</span>`;
   logDiv.insertBefore(line, logDiv.firstChild);
   while (logDiv.children.length > 15) logDiv.removeChild(logDiv.lastChild);
 }
 
+// ── Inicio ────────────────────────────────────────────────────────────────
 renderPortadores();
 obtenerDatosReales();
 setInterval(obtenerDatosReales, 2000);

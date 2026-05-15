@@ -318,7 +318,7 @@ if __name__ == "__main__":
         modos = ["normal", "alerta", "critico", "normal", "alerta", "critico"]
         idx = 0
         while True:
-            time.sleep(10)
+            time.sleep(20)
             nuevo_modo = modos[idx % len(modos)]
             server.set_modo(nuevo_modo)
             print(f"\n[ARDUINO] >>> PACIENTE {portador_id} CAMBIA A MODO: {nuevo_modo.upper()} <<<\n")
