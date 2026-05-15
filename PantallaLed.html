@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel LED — Alertas Médicas</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050709;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-family: 'Courier New', monospace;
+    }
+
+    #screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      transition: background 0.6s;
+      position: relative;
+      padding: 40px 24px;
+    }
+
+    #standby {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      transition: opacity 0.4s;
+    }
+    #standby-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #1a2a1a;
+      animation: standby-blink 4s ease-in-out infinite;
+    }
+    @keyframes standby-blink { 0%,100%{opacity:0.3} 50%{opacity:1} }
+    #standby-txt {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: #1c2e1c;
+      text-transform: uppercase;
+    }
+
+    #alerta-content {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    #nivel-banner {
+      font-size: 56px;
+      font-weight: bold;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    #portador-bloque { text-align: center; }
+    #portador-nombre { font-size: 18px; letter-spacing: 0.1em; }
+    #portador-cond   { font-size: 12px; letter-spacing: 0.06em; margin-top: 5px; opacity: 0.5; }
+
+    .div-line { height: 1px; width: 100px; opacity: 0.2; }
+
+    #params-lista {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .param-row {
+      display: grid;
+      grid-template-columns: 180px 80px 1fr;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      border-radius: 5px;
+      border-left: 3px solid transparent;
+    }
+    .param-row.p1 { border-left-color: #b8860b; background: rgba(184,134,11,0.07); }
+    .param-row.p2 { border-left-color: #c0531a; background: rgba(192,83,26,0.08); }
+    .param-row.p3 { border-left-color: #b81c1c; background: rgba(184,28,28,0.1); }
+
+    .p-nombre { font-size: 12px; letter-spacing: 0.08em; opacity: 0.65; text-transform: uppercase; }
+    .p-valor  { font-size: 22px; font-weight: bold; text-align: right; font-variant-numeric: tabular-nums; }
+    .p-unit   { font-size: 11px; opacity: 0.45; font-weight: normal; margin-left: 2px; }
+    .p-desc   { font-size: 12px; opacity: 0.6; letter-spacing: 0.03em; }
+
+    .col-1 { color: #f0c040; }
+    .col-2 { color: #f07040; }
+    .col-3 { color: #f03030; }
+
+    #ts {
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      opacity: 0.25;
+      text-transform: uppercase;
+    }
+
+    .anim-precaucion { animation: blink-slow 2.5s ease-in-out infinite; }
+    .anim-alerta     { animation: blink-mid  1s   ease-in-out infinite; }
+    .anim-critico    { animation: blink-fast 0.45s ease-in-out infinite; }
+
+    @keyframes blink-slow { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    @keyframes blink-mid  { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    @keyframes blink-fast { 0%,100%{opacity:1} 50%{opacity:0.1} }
+
+    #ctrl-modo {
+      position: absolute; bottom: 16px; right: 16px;
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+    }
+    #ctrl-portador {
+      position: absolute; bottom: 16px; left: 16px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .ctrl-label { font-size: 9px; color: #1e3a1e; letter-spacing: 0.14em; text-transform: uppercase; }
+    .btn-row { display: flex; gap: 4px; }
+    .cb {
+      padding: 4px 10px; border: 1px solid #1a281a; border-radius: 4px;
+      background: transparent; color: #1e3a1e;
+      font-family: 'Courier New', monospace; font-size: 10px; letter-spacing: 0.06em;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .cb:hover { border-color: #2a4a2a; color: #2a5a2a; }
+    .cb.sel-n { border-color: #22c55e; color: #22c55e; }
+    .cb.sel-a { border-color: #f97316; color: #f97316; }
+    .cb.sel-c { border-color: #ef4444; color: #ef4444; }
+    .cb.sel-p { border-color: #818cf8; color: #818cf8; }
+  </style>
+</head>
+<body>
+<div id="screen">
+
+  <div id="standby">
+    <div id="standby-dot"></div>
+    <div id="standby-txt">Sistema activo — sin alertas</div>
+  </div>
+
+  <div id="alerta-content">
+    <div id="nivel-banner"></div>
+    <div id="portador-bloque">
+      <div id="portador-nombre"></div>
+      <div id="portador-cond"></div>
+    </div>
+    <div class="div-line" id="divider"></div>
+    <div id="params-lista"></div>
+    <div id="ts"></div>
+  </div>
+
+  <div id="ctrl-modo">
+    <div class="ctrl-label">Simular señal</div>
+    <div class="btn-row">
+      <button class="cb sel-n" id="mb-n" onclick="setModo('normal')">Normal</button>
+      <button class="cb" id="mb-a" onclick="setModo('alerta')">Alerta</button>
+      <button class="cb" id="mb-c" onclick="setModo('critico')">Crítico</button>
+    </div>
+  </div>
+
+  <div id="ctrl-portador">
+    <div class="ctrl-label">Portador</div>
+    <div class="btn-row">
+      <button class="cb sel-p" id="pb-001" onclick="selPortador('001')">001</button>
+      <button class="cb" id="pb-002" onclick="selPortador('002')">002</button>
+      <button class="cb" id="pb-003" onclick="selPortador('003')">003</button>
+      <button class="cb" id="pb-004" onclick="selPortador('004')">004</button>
+    </div>
+  </div>
+
+</div>
+<script>
+const PORTADORES = {
+  "001":{ nombre:"Carlos Mendoza", cond:"Hipertensión · Diabetes tipo 2" },
+  "002":{ nombre:"Ana Torres",     cond:"Asma" },
+  "003":{ nombre:"Miguel Soto",    cond:"Arritmia · Hipertensión" },
+  "004":{ nombre:"Roberto López",  cond:"Sin condiciones crónicas" }
+};
+const PLABELS = {
+  pulso_bpm:          { label:"Pulso cardíaco",      unit:"bpm" },
+  temperatura_c:      { label:"Temperatura",          unit:"°C" },
+  presion_sistolica:  { label:"Presión sistólica",    unit:"mmHg" },
+  presion_diastolica: { label:"Presión diastólica",   unit:"mmHg" },
+  spo2_porcentaje:    { label:"Saturación O₂",        unit:"%" },
+  glucosa_mgdl:       { label:"Glucosa",              unit:"mg/dL" },
+  riesgo_acv:         { label:"Riesgo ACV",           unit:"score" },
+  riesgo_paro_cardiaco:{ label:"Riesgo paro cardíaco",unit:"score" }
+};
+
+let portadorActivo = "001";
+let modoLocal = {"001":"normal","002":"normal","003":"normal","004":"normal"};
+let ultimosDatosReales = null;
+
+function generarDatos(id) {
+  const r=(a,b)=>a+Math.random()*(b-a);
+  const modo=modoLocal[id];
+
+  if(id==="002"){
+    let spo2,pulso,temp,sist,diast,glucosa;
+    if(modo==="normal")  {spo2=r(96,99);pulso=r(70,90);temp=r(36.2,37.0);sist=r(108,122);diast=r(68,80);glucosa=r(85,110);}
+    else if(modo==="alerta"){spo2=r(91,94);pulso=r(95,115);temp=r(37.2,38.2);sist=r(118,135);diast=r(75,90);glucosa=r(90,120);}
+    else                 {spo2=r(85,90);pulso=r(120,145);temp=r(38.5,39.8);sist=r(135,155);diast=r(88,100);glucosa=r(95,130);}
+    const nivel=spo2<90?"CRITICO":spo2<93?"ALERTA":spo2<95?"PRECAUCION":"NORMAL";
+    const alertas=[];
+    if(spo2<90)     alertas.push({p:"spo2_porcentaje",v:spo2,n:3,desc:"Hipoxemia severa — riesgo respiratorio inmediato"});
+    else if(spo2<93)alertas.push({p:"spo2_porcentaje",v:spo2,n:2,desc:"Hipoxemia moderada"});
+    else if(spo2<95)alertas.push({p:"spo2_porcentaje",v:spo2,n:1,desc:"Por debajo del umbral seguro para asma"});
+    if(pulso>120)   alertas.push({p:"pulso_bpm",v:pulso,n:2,desc:"Taquicardia compensatoria"});
+    if(temp>38.5)   alertas.push({p:"temperatura_c",v:temp,n:2,desc:"Fiebre — posible crisis asmática"});
+    return{nivel,alertas};
+  }
+
+  if(id==="003"){
+    let sist,diast,pulso,temp,spo2,glucosa;
+    if(modo==="normal")  {sist=r(128,142);diast=r(82,92);pulso=r(68,88);temp=r(36.0,36.9);spo2=r(95,98);glucosa=r(90,115);}
+    else if(modo==="alerta"){sist=r(155,170);diast=r(98,110);pulso=r(110,130);temp=r(36.5,37.5);spo2=r(93,96);glucosa=r(100,130);}
+    else                 {sist=r(175,200);diast=r(112,130);pulso=r(140,165);temp=r(37.0,38.5);spo2=r(89,93);glucosa=r(110,150);}
+    const ord=["NORMAL","PRECAUCION","ALERTA","CRITICO"];
+    const nPA=sist>175?"CRITICO":sist>155?"ALERTA":sist>135?"PRECAUCION":"NORMAL";
+    const nP=pulso>140?"CRITICO":pulso>110?"ALERTA":pulso>90?"PRECAUCION":"NORMAL";
+    const nivel=ord[Math.max(ord.indexOf(nPA),ord.indexOf(nP))];
+    const alertas=[];
+    if(sist>175)      alertas.push({p:"presion_sistolica",v:sist,n:3,desc:"Crisis hipertensiva — riesgo de ACV"});
+    else if(sist>155) alertas.push({p:"presion_sistolica",v:sist,n:2,desc:"Hipertensión severa"});
+    else if(sist>135) alertas.push({p:"presion_sistolica",v:sist,n:1,desc:"Elevada para perfil de arritmia"});
+    if(diast>110)     alertas.push({p:"presion_diastolica",v:diast,n:3,desc:"Diastólica crítica"});
+    if(pulso>140)     alertas.push({p:"pulso_bpm",v:pulso,n:3,desc:"Arritmia severa — riesgo de paro"});
+    else if(pulso>110)alertas.push({p:"pulso_bpm",v:pulso,n:2,desc:"Taquiarritmia activa"});
+    else if(pulso>90) alertas.push({p:"pulso_bpm",v:pulso,n:1,desc:"Elevado para perfil de arritmia"});
+    if(spo2<90)       alertas.push({p:"spo2_porcentaje",v:spo2,n:3,desc:"Hipoxemia severa"});
+    return{nivel,alertas};
+  }
+
+  if(id==="004"){
+    let pulso,temp,sist,diast,spo2,glucosa,nivel,alertas=[];
+    if(modo==="normal"){pulso=r(62,80);temp=r(36.2,36.8);sist=r(108,120);diast=r(68,78);spo2=r(97,99);glucosa=r(82,100);nivel="NORMAL";}
+    else if(modo==="alerta"){pulso=r(105,125);temp=r(37.9,38.8);sist=r(148,162);diast=r(94,106);spo2=r(92,95);glucosa=r(60,68);nivel="ALERTA";
+      alertas=[{p:"pulso_bpm",v:pulso,n:2,desc:"Taquicardia"},{p:"temperatura_c",v:temp,n:2,desc:"Fiebre moderada"},{p:"glucosa_mgdl",v:glucosa,n:2,desc:"Hipoglucemia moderada"}];}
+    else{pulso=r(148,170);temp=r(39.8,41.0);sist=r(172,195);diast=r(110,128);spo2=r(84,89);glucosa=r(48,56);nivel="CRITICO";
+      alertas=[{p:"pulso_bpm",v:pulso,n:3,desc:"Taquicardia severa"},{p:"temperatura_c",v:temp,n:3,desc:"Fiebre severa — hipertermia"},{p:"spo2_porcentaje",v:spo2,n:3,desc:"Hipoxemia severa"},{p:"glucosa_mgdl",v:glucosa,n:3,desc:"Hipoglucemia severa — emergencia"}];}
+    return{nivel,alertas};
+  }
+  return{nivel:"NORMAL",alertas:[]};
+}
+
+function render(nivel, alertas, portadorId) {
+  const screen  = document.getElementById("screen");
+  const standby = document.getElementById("standby");
+  const content = document.getElementById("alerta-content");
+  const p = PORTADORES[portadorId];
+
+  if(nivel==="NORMAL" || !alertas || alertas.length===0){
+    screen.style.background="#050709";
+    standby.style.display="flex";
+    content.style.display="none";
+    return;
+  }
+
+  standby.style.display="none";
+  content.style.display="flex";
+
+  const cfg={
+    PRECAUCION:{bg:"#110e00",color:"#f0c040",anim:"anim-precaucion",label:"PRECAUCIÓN"},
+    ALERTA:    {bg:"#110500",color:"#f07040",anim:"anim-alerta",    label:"ALERTA"},
+    CRITICO:   {bg:"#0f0000",color:"#f03030",anim:"anim-critico",   label:"EMERGENCIA"}
+  }[nivel]||{bg:"#050709",color:"#aaa",anim:"",label:nivel};
+
+  screen.style.background=cfg.bg;
+
+  const banner=document.getElementById("nivel-banner");
+  banner.className=cfg.anim;
+  banner.textContent=cfg.label;
+  banner.style.color=cfg.color;
+
+  document.getElementById("portador-nombre").textContent=p.nombre;
+  document.getElementById("portador-nombre").style.color=cfg.color;
+  document.getElementById("portador-cond").textContent=p.cond;
+  document.getElementById("portador-cond").style.color=cfg.color;
+  document.getElementById("divider").style.background=cfg.color;
+
+  document.getElementById("params-lista").innerHTML=alertas.map(a=>{
+    const meta=PLABELS[a.p]||{label:a.p,unit:""};
+    const v=parseFloat(a.v);
+    const vs=isNaN(v)?a.v:(meta.unit==="°C"?v.toFixed(1):Math.round(v));
+    return`<div class="param-row p${a.n}">
+      <div class="p-nombre col-${a.n}">${meta.label}</div>
+      <div class="p-valor col-${a.n}">${vs}<span class="p-unit">${meta.unit}</span></div>
+      <div class="p-desc col-${a.n}">${a.desc}</div>
+    </div>`;
+  }).join("");
+
+  const ts=document.getElementById("ts");
+  ts.style.color=cfg.color;
+  ts.textContent=new Date().toLocaleTimeString("es-CL");
+}
+
+async function pollPython(){
+  try{
+    const res=await fetch("http://localhost:8080/estado");
+    const data=await res.json();
+    if(data&&data.estado!=="sin_datos"){
+      ultimosDatosReales=data;
+      if(portadorActivo!=="001")return;
+      const alertasConv=(data.alertas||[]).map(a=>{
+        const n={CRITICO:3,ALERTA:2,PRECAUCION:1}[a.nivel]||1;
+        const desc=(a.mensaje||"").replace(/^[^\w]*(CRÍTICO|ALERTA|PRECAUCIÓN)?:?\s*[^—]*—\s*/,"").trim();
+        return{p:a.parametro,v:a.valor,n,desc};
+      });
+      render(data.nivel,alertasConv,"001");
+    }
+  }catch{}
+}
+
+function cicloLocal(){
+  if(portadorActivo==="001")return;
+  const datos=generarDatos(portadorActivo);
+  if(datos)render(datos.nivel,datos.alertas,portadorActivo);
+}
+
+setInterval(cicloLocal,4000);
+setInterval(pollPython,2000);
+
+function setModo(modo){
+  modoLocal[portadorActivo]=modo;
+  document.getElementById("mb-n").className="cb"+(modo==="normal"?" sel-n":"");
+  document.getElementById("mb-a").className="cb"+(modo==="alerta"?" sel-a":"");
+  document.getElementById("mb-c").className="cb"+(modo==="critico"?" sel-c":"");
+  if(portadorActivo==="001"){
+    fetch("http://localhost:8080/cambiar_modo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({modo})}).catch(()=>{});
+  } else {
+    const datos=generarDatos(portadorActivo);
+    if(datos)render(datos.nivel,datos.alertas,portadorActivo);
+  }
+}
+
+function selPortador(id){
+  portadorActivo=id;
+  ["001","002","003","004"].forEach(i=>{
+    document.getElementById(`pb-${i}`).className="cb"+(i===id?" sel-p":"");
+  });
+  const modo=modoLocal[id];
+  document.getElementById("mb-n").className="cb"+(modo==="normal"?" sel-n":"");
+  document.getElementById("mb-a").className="cb"+(modo==="alerta"?" sel-a":"");
+  document.getElementById("mb-c").className="cb"+(modo==="critico"?" sel-c":"");
+  if(id==="001"&&ultimosDatosReales){
+    const alertasConv=(ultimosDatosReales.alertas||[]).map(a=>{
+      const n={CRITICO:3,ALERTA:2,PRECAUCION:1}[a.nivel]||1;
+      const desc=(a.mensaje||"").replace(/^[^\w]*(CRÍTICO|ALERTA|PRECAUCIÓN)?:?\s*[^—]*—\s*/,"").trim();
+      return{p:a.parametro,v:a.valor,n,desc};
+    });
+    render(ultimosDatosReales.nivel,alertasConv,"001");
+  } else {
+    const datos=generarDatos(id);
+    if(datos)render(datos.nivel,datos.alertas,id);
+  }
+}
+
+pollPython();
+cicloLocal();
+</script>
+</body>
+</html>
