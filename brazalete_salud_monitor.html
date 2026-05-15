@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brazalete Médico - Monitoreo de Salud</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; padding: 0; margin: 0; }
+      .screen { padding: 20px; max-width: 1400px; width: 100%; margin: 0 auto; background-color: #f5f5f5; }
+      .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border: 0.5px solid #e2e8f0; border-radius: 16px; background: white; margin-bottom: 20px; }
+      .header-left { display: flex; align-items: center; gap: 12px; }
+      .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; animation: pulse-ring 1.5s ease-in-out infinite; }
+      @keyframes pulse-ring { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.5); } 50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); } }
+      .header-title { font-size: 16px; font-weight: 600; color: #1e293b; }
+      .header-sub { font-size: 13px; color: #64748b; }
+      .battery { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+      .bat-icon { display: flex; align-items: center; gap: 3px; }
+      .bat-body { width: 22px; height: 11px; border: 1.5px solid #64748b; border-radius: 3px; position: relative; }
+      .bat-fill { height: 100%; border-radius: 2px; background: #22c55e; transition: width .5s; }
+      .bat-tip { width: 3px; height: 5px; background: #64748b; border-radius: 0 2px 2px 0; }
+      .portador-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+      .portador-btn { padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 14px; background: white; cursor: pointer; transition: all .15s; text-align: left; }
+      .portador-btn:hover { background: #f8fafc; }
+      .portador-btn.active { border-color: #6366f1; border-width: 2px; background: #f5f3ff; }
+      .pb-name { font-size: 15px; font-weight: 600; color: #1e293b; }
+      .pb-cond { font-size: 12px; color: #64748b; margin-top: 3px; }
+      .pb-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 12px; margin-top: 5px; }
+      .modo-row { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+      .modo-label { font-size: 13px; color: #64748b; white-space: nowrap; font-weight: 500; }
+      .modo-btn { flex: 1; padding: 10px 8px; border: 1px solid #e2e8f0; border-radius: 12px; background: white; cursor: pointer; font-size: 13px; font-weight: 600; color: #64748b; text-align: center; }
+      .modo-btn.active-normal { background: #dcfce7; color: #166534; border-color: #16a34a; }
+      .modo-btn.active-alerta { background: #fef9c3; color: #854d0e; border-color: #ca8a04; }
+      .modo-btn.active-critico { background: #fee2e2; color: #991b1b; border-color: #dc2626; }
+      .main-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 20px; }
+      .sensor-card { padding: 16px 18px; border: 1px solid #e2e8f0; border-radius: 18px; background: white; transition: all .3s; }
+      .sensor-card.level-1 { border-color: #ca8a04; background: #fefce8; }
+      .sensor-card.level-2 { border-color: #ea580c; background: #fff7ed; }
+      .sensor-card.level-3 { border-color: #dc2626; background: #fef2f2; }
+      .sc-label { font-size: 12px; color: #64748b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; font-weight: 500; }
+      .sc-value { font-size: 32px; font-weight: 700; color: #1e293b; line-height: 1.1; }
+      .sc-unit { font-size: 13px; color: #64748b; margin-left: 4px; font-weight: 400; }
+      .sc-bar { height: 4px; background: #e2e8f0; border-radius: 4px; margin-top: 10px; }
+      .sc-bar-fill { height: 100%; border-radius: 4px; transition: width .6s; }
+      .alert-panel { border: 1px solid #e2e8f0; border-radius: 18px; background: white; overflow: hidden; margin-bottom: 20px; }
+      .alert-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid #e2e8f0; }
+      .led { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+      .led-normal { background: #22c55e; box-shadow: 0 0 12px rgba(34,197,94,.5); }
+      .led-precaucion { background: #eab308; box-shadow: 0 0 12px rgba(234,179,8,.5); animation: blink-slow 2s infinite; }
+      .led-alerta { background: #f97316; box-shadow: 0 0 16px rgba(249,115,22,.6); animation: blink-mid 1s infinite; }
+      .led-critico { background: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,.7); animation: blink-fast .5s infinite; }
+      @keyframes blink-slow { 0%,100%{opacity:1} 50%{opacity:.6} }
+      @keyframes blink-mid { 0%,100%{opacity:1} 50%{opacity:.4} }
+      @keyframes blink-fast { 0%,100%{opacity:1} 50%{opacity:.2} }
+      .alert-level-tag { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; }
+      .tag-normal { background: #dcfce7; color: #166534; }
+      .tag-precaucion { background: #fef9c3; color: #854d0e; }
+      .tag-alerta { background: #ffedd5; color: #9a3412; }
+      .tag-critico { background: #fee2e2; color: #991b1b; }
+      .alert-resumen { font-size: 15px; font-weight: 600; color: #1e293b; flex: 1; }
+      .alert-items { padding: 12px 20px 16px; }
+      .no-alerts { font-size: 13px; color: #64748b; padding: 10px 0; }
+      .alert-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+      .alert-item:last-child { border-bottom: none; }
+      .ai-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+      .dot-1 { background: #eab308; }
+      .dot-2 { background: #f97316; }
+      .dot-3 { background: #ef4444; }
+      .ai-msg { color: #1e293b; line-height: 1.5; font-weight: 500; }
+      .hist-section { border: 1px solid #e2e8f0; border-radius: 18px; background: white; padding: 16px 18px; margin-top: 20px; }
+      .hist-title { font-size: 13px; font-weight: 600; color: #64748b; margin-bottom: 12px; }
+      .hist-track { display: flex; gap: 4px; align-items: flex-end; height: 40px; margin-bottom: 12px; }
+      .hist-bar { flex: 1; border-radius: 4px; min-width: 8px; }
+      .hb-0 { background: #22c55e; }
+      .hb-1 { background: #eab308; }
+      .hb-2 { background: #f97316; }
+      .hb-3 { background: #ef4444; }
+      .mini-log { margin-top: 12px; max-height: 150px; overflow-y: auto; }
+      .log-line { font-size: 12px; color: #64748b; display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid #e2e8f0; }
+      .log-time { color: #94a3b8; flex-shrink: 0; font-weight: 500; }
+    </style>
+</head>
+<body>
+<div class="screen">
+  <div class="header-bar">
+    <div class="header-left">
+      <div class="pulse-dot" id="status-dot"></div>
+      <div>
+        <div class="header-title">Brazalete Médico v1.0</div>
+        <div class="header-sub" id="header-sub">Conectando con procesador...</div>
+      </div>
+    </div>
+    <div class="battery">
+      <div class="bat-icon">
+        <div class="bat-body"><div class="bat-fill" id="bat-fill" style="width:87%"></div></div>
+        <div class="bat-tip"></div>
+      </div>
+      <span id="bat-txt">87%</span>
+    </div>
+  </div>
+
+  <div class="portador-grid" id="portador-grid"></div>
+
+  <div class="modo-row">
+    <span class="modo-label">Cambiar modo simulador:</span>
+    <button class="modo-btn active-normal" id="btn-normal" onclick="cambiarModoRemoto('normal')">Normal</button>
+    <button class="modo-btn" id="btn-alerta" onclick="cambiarModoRemoto('alerta')">Alerta</button>
+    <button class="modo-btn" id="btn-critico" onclick="cambiarModoRemoto('critico')">Crítico</button>
+  </div>
+
+  <div class="main-grid">
+    <div class="sensor-card" id="card-pulso"><div class="sc-label">♥ Pulso cardíaco</div><div><span class="sc-value" id="val-pulso">--</span><span class="sc-unit">bpm</span></div><div class="sc-bar"><div class="sc-bar-fill" id="bar-pulso" style="width:50%;background:#22c55e"></div></div></div>
+    <div class="sensor-card" id="card-temp"><div class="sc-label">🌡 Temperatura</div><div><span class="sc-value" id="val-temp">--</span><span class="sc-unit">°C</span></div><div class="sc-bar"><div class="sc-bar-fill" id="bar-temp" style="width:50%;background:#22c55e"></div></div></div>
+    <div class="sensor-card" id="card-presion"><div class="sc-label">📊 Presión arterial</div><div><span class="sc-value" id="val-presion">--</span><span class="sc-unit">mmHg</span></div><div class="sc-bar"><div class="sc-bar-fill" id="bar-presion" style="width:50%;background:#22c55e"></div></div></div>
+    <div class="sensor-card" id="card-spo2"><div class="sc-label">💨 Saturación O₂</div><div><span class="sc-value" id="val-spo2">--</span><span class="sc-unit">%</span></div><div class="sc-bar"><div class="sc-bar-fill" id="bar-spo2" style="width:50%;background:#22c55e"></div></div></div>
+    <div class="sensor-card" id="card-glucosa"><div class="sc-label">🩸 Glucosa</div><div><span class="sc-value" id="val-glucosa">--</span><span class="sc-unit">mg/dL</span></div><div class="sc-bar"><div class="sc-bar-fill" id="bar-glucosa" style="width:50%;background:#22c55e"></div></div></div>
+    <div class="sensor-card" id="card-accel"><div class="sc-label">📡 Acelerómetro</div><div><span class="sc-value" id="val-accel">--</span><span class="sc-unit">g</span></div><div class="sc-bar"><div class="sc-bar-fill" id="bar-accel" style="width:20%;background:#22c55e"></div></div></div>
+  </div>
+
+  <div class="alert-panel" id="alert-panel">
+    <div class="alert-header" id="alert-header">
+      <div class="led led-normal" id="led"></div>
+      <div class="alert-resumen" id="alert-resumen">Iniciando sistema...</div>
+      <span class="alert-level-tag tag-normal" id="alert-tag">NORMAL</span>
+    </div>
+    <div class="alert-items" id="alert-items"><div class="no-alerts">Esperando datos del procesador...</div></div>
+  </div>
+
+  <div class="hist-section">
+    <div class="hist-title">Historial de eventos</div>
+    <div class="hist-track" id="hist-track"></div>
+    <div class="mini-log" id="mini-log"><div class="log-line"><span class="log-time">--:--:--</span><span>Iniciando monitoreo...</span></div></div>
+  </div>
+</div>
+
+<script>
+const PORTADORES = {
+  "001": { nombre:"Carlos Mendoza", edad:58, condiciones:["hipertension","diabetes_tipo2"], color:"#6366f1" },
+  "002": { nombre:"Ana Torres", edad:34, condiciones:["asma"], color:"#0891b2" },
+  "003": { nombre:"Miguel Soto", edad:72, condiciones:["arritmia","hipertension"], color:"#059669" },
+  "004": { nombre:"Roberto López", edad:30, condiciones:["Persona Sana"], color:"#050638"}
+};
+
+let portadorActivo = "001";
+let ultimosDatosReales = null;
+let historialNiveles = [];
+
+function renderPortadores() {
+  const grid = document.getElementById("portador-grid");
+  grid.innerHTML = Object.entries(PORTADORES).map(([id, p]) => `
+    <button class="portador-btn ${id === portadorActivo ? 'active' : ''}" onclick="selPortador('${id}')">
+      <div class="pb-name">${p.nombre}</div>
+      <div class="pb-cond">${p.edad} años</div>
+      <span class="pb-badge" style="background:${p.color}22;color:${p.color}">${p.condiciones.join(', ')}</span>
+    </button>
+  `).join('');
+}
+
+async function selPortador(id) {
+  portadorActivo = id;
+  renderPortadores();
+  
+  if (id === "001") {
+    if (ultimosDatosReales) {
+      actualizarInterfazConDatosReales(ultimosDatosReales);
+    }
+  } else {
+    const datosLocales = obtenerDatosLocales(id);
+    actualizarInterfazConDatosLocales(datosLocales, id);
+  }
+  
+  agregarAlLog(`Cambio a portador: ${PORTADORES[id].nombre}`);
+}
+
+async function cambiarModoRemoto(modo) {
+  const modoNombre = {normal:"NORMAL", alerta:"ALERTA", critico:"CRITICO"}[modo];
+  agregarAlLog(`Cambio manual a modo ${modoNombre}`);
+  
+  document.getElementById("btn-normal").className = "modo-btn" + (modo === "normal" ? " active-normal" : "");
+  document.getElementById("btn-alerta").className = "modo-btn" + (modo === "alerta" ? " active-alerta" : "");
+  document.getElementById("btn-critico").className = "modo-btn" + (modo === "critico" ? " active-critico" : "");
+  
+  try {
+    await fetch('http://localhost:8080/cambiar_modo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modo: modo })
+    });
+  } catch(e) { console.log("Simulador no disponible"); }
+}
+
+async function obtenerDatosReales() {
+  try {
+    const response = await fetch('http://localhost:8080/estado');
+    const data = await response.json();
+    if (data && data.estado !== "sin_datos") {
+      ultimosDatosReales = data;
+      if (portadorActivo === "001") {
+        actualizarInterfazConDatosReales(data);
+      }
+      document.getElementById("header-sub").innerHTML = "✅ Conectado al procesador";
+    }
+  } catch (error) {
+    document.getElementById("header-sub").innerHTML = "⚠️ Conectando con procesador...";
+  }
+}
+
+function obtenerDatosLocales(portadorId) {
+    const random = (min, max) => min + Math.random() * (max - min);
+    
+    if (portadorId === "002") {
+        let spo2 = random(88, 98);
+        let nivel = spo2 < 90 ? "CRITICO" : (spo2 < 93 ? "ALERTA" : (spo2 < 95 ? "PRECAUCION" : "NORMAL"));
+        let alertas = [];
+        if (spo2 < 90) alertas = [`🔴 CRÍTICO: SpO2 ${Math.round(spo2)}%`];
+        else if (spo2 < 93) alertas = [`🔶 ALERTA: SpO2 ${Math.round(spo2)}%`];
+        else if (spo2 < 95) alertas = [`⚠ SpO2 ${Math.round(spo2)}%`];
+        
+        return {
+            nivel: nivel,
+            resumen: `Ana Torres: SpO2 ${Math.round(spo2)}%`,
+            alertas: alertas,
+            sensores: {
+                pulso_bpm: random(75, 100),
+                temperatura_c: random(36.2, 37.2).toFixed(1),
+                presion_sistolica: random(110, 125),
+                presion_diastolica: random(70, 85),
+                spo2_porcentaje: spo2,
+                glucosa_mgdl: random(85, 110)
+            }
+        };
+    }
+    
+    if (portadorId === "003") {
+        let sist = random(130, 175);
+        let diast = random(85, 110);
+        let nivel = sist > 170 ? "CRITICO" : (sist > 155 ? "ALERTA" : (sist > 135 ? "PRECAUCION" : "NORMAL"));
+        let alertas = [];
+        if (sist > 170) alertas = [`🔴 CRÍTICO: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`];
+        else if (sist > 155) alertas = [`🔶 ALERTA: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`];
+        else if (sist > 135) alertas = [`⚠ Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`];
+        
+        return {
+            nivel: nivel,
+            resumen: `Miguel Soto: Presión ${Math.round(sist)}/${Math.round(diast)} mmHg`,
+            alertas: alertas,
+            sensores: {
+                pulso_bpm: random(65, 95),
+                temperatura_c: random(36.0, 37.0).toFixed(1),
+                presion_sistolica: sist,
+                presion_diastolica: diast,
+                spo2_porcentaje: random(94, 98),
+                glucosa_mgdl: random(90, 120)
+            }
+        };
+    }
+    
+    if (portadorId === "004") {
+        return {
+            nivel: "NORMAL",
+            resumen: "Roberto López: Todos los parámetros normales",
+            alertas: [],
+            sensores: {
+                pulso_bpm: random(65, 80),
+                temperatura_c: random(36.2, 36.8).toFixed(1),
+                presion_sistolica: random(110, 120),
+                presion_diastolica: random(70, 80),
+                spo2_porcentaje: random(96, 99),
+                glucosa_mgdl: random(85, 100)
+            }
+        };
+    }
+    
+    return {
+        nivel: "NORMAL",
+        resumen: "Sin datos",
+        alertas: [],
+        sensores: { pulso_bpm: 70, temperatura_c: 36.5, presion_sistolica: 115, presion_diastolica: 75, spo2_porcentaje: 97, glucosa_mgdl: 90 }
+    };
+}
+
+// Agrega esto para que los datos se actualicen cada 4 segundos
+setInterval(() => {
+    if (portadorActivo !== "001") {
+        const datos = obtenerDatosLocales(portadorActivo);
+        actualizarInterfazConDatosLocales(datos, portadorActivo);
+    }
+}, 4000);
+
+function actualizarInterfazConDatosReales(data) {
+  const s = data.datos_raw?.sensores || {};
+  const nivel = data.nivel || "NORMAL";
+  const nivelNum = { "NORMAL":0, "PRECAUCION":1, "ALERTA":2, "CRITICO":3 }[nivel] || 0;
+  
+  document.getElementById("val-pulso").innerHTML = Math.round(s.pulso_bpm || 0);
+  document.getElementById("val-temp").innerHTML = (s.temperatura_c || 0).toFixed(1);
+  document.getElementById("val-presion").innerHTML = `${Math.round(s.presion_sistolica || 0)}/${Math.round(s.presion_diastolica || 0)}`;
+  document.getElementById("val-spo2").innerHTML = Math.round(s.spo2_porcentaje || 0);
+  document.getElementById("val-glucosa").innerHTML = Math.round(s.glucosa_mgdl || 0);
+  document.getElementById("val-accel").innerHTML = "0.05";
+  
+  document.getElementById("bar-pulso").style.width = Math.min(100, (s.pulso_bpm || 60) / 200 * 100) + "%";
+  document.getElementById("bar-pulso").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-temp").style.width = Math.min(100, ((s.temperatura_c || 36) - 34) / 8 * 100) + "%";
+  document.getElementById("bar-temp").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-presion").style.width = Math.min(100, ((s.presion_sistolica || 120) - 80) / 140 * 100) + "%";
+  document.getElementById("bar-presion").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-spo2").style.width = Math.min(100, (s.spo2_porcentaje || 97) / 100 * 100) + "%";
+  document.getElementById("bar-spo2").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-glucosa").style.width = Math.min(100, ((s.glucosa_mgdl || 90) - 50) / 300 * 100) + "%";
+  document.getElementById("bar-glucosa").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  
+  const cards = ["card-pulso", "card-temp", "card-presion", "card-spo2", "card-glucosa"];
+  cards.forEach(c => document.getElementById(c).className = "sensor-card" + (nivelNum > 0 ? " level-"+nivelNum : ""));
+  
+  const leds = ["led-normal","led-precaucion","led-alerta","led-critico"];
+  const tags = ["tag-normal","tag-precaucion","tag-alerta","tag-critico"];
+  const nombres = ["NORMAL","PRECAUCIÓN","ALERTA","CRÍTICO"];
+  
+  document.getElementById("led").className = "led " + leds[nivelNum];
+  document.getElementById("alert-tag").className = "alert-level-tag " + tags[nivelNum];
+  document.getElementById("alert-tag").innerHTML = nombres[nivelNum];
+  document.getElementById("alert-resumen").innerHTML = data.resumen || `Carlos Mendoza: ${nivel}`;
+  
+  const alertasDiv = document.getElementById("alert-items");
+  if (data.alertas && data.alertas.length > 0) {
+    alertasDiv.innerHTML = data.alertas.map(a => `<div class="alert-item"><div class="ai-dot dot-${a.nivel === "CRITICO" ? 3 : a.nivel === "ALERTA" ? 2 : 1}"></div><div class="ai-msg">${a.mensaje || a.parametro + ": " + a.valor}</div></div>`).join('');
+  } else {
+    alertasDiv.innerHTML = '<div class="no-alerts">✅ Sin alertas activas</div>';
+  }
+  
+  document.getElementById("header-sub").innerHTML = `Carlos Mendoza · 58 años · Datos reales del simulador`;
+  
+  historialNiveles.push({ nivel: nivelNum, hora: new Date().toLocaleTimeString() });
+  if (historialNiveles.length > 20) historialNiveles.shift();
+  actualizarHistorial();
+}
+
+function actualizarInterfazConDatosLocales(datos, portadorId) {
+  const s = datos.sensores;
+  const p = PORTADORES[portadorId];
+  const nivelNum = { "NORMAL":0, "PRECAUCION":1, "ALERTA":2, "CRITICO":3 }[datos.nivel] || 0;
+  
+  document.getElementById("val-pulso").innerHTML = Math.round(s.pulso_bpm);
+  document.getElementById("val-temp").innerHTML = s.temperatura_c.toFixed(1);
+  document.getElementById("val-presion").innerHTML = `${Math.round(s.presion_sistolica)}/${Math.round(s.presion_diastolica)}`;
+  document.getElementById("val-spo2").innerHTML = Math.round(s.spo2_porcentaje);
+  document.getElementById("val-glucosa").innerHTML = Math.round(s.glucosa_mgdl);
+  
+  document.getElementById("bar-pulso").style.width = Math.min(100, s.pulso_bpm / 200 * 100) + "%";
+  document.getElementById("bar-pulso").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-temp").style.width = Math.min(100, (s.temperatura_c - 34) / 8 * 100) + "%";
+  document.getElementById("bar-temp").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-presion").style.width = Math.min(100, (s.presion_sistolica - 80) / 140 * 100) + "%";
+  document.getElementById("bar-presion").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-spo2").style.width = Math.min(100, s.spo2_porcentaje / 100 * 100) + "%";
+  document.getElementById("bar-spo2").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  document.getElementById("bar-glucosa").style.width = Math.min(100, (s.glucosa_mgdl - 50) / 300 * 100) + "%";
+  document.getElementById("bar-glucosa").style.background = ["#22c55e","#eab308","#f97316","#ef4444"][nivelNum];
+  
+  const cards = ["card-pulso", "card-temp", "card-presion", "card-spo2", "card-glucosa"];
+  cards.forEach(c => document.getElementById(c).className = "sensor-card" + (nivelNum > 0 ? " level-"+nivelNum : ""));
+  
+  const leds = ["led-normal","led-precaucion","led-alerta","led-critico"];
+  const tags = ["tag-normal","tag-precaucion","tag-alerta","tag-critico"];
+  const nombres = ["NORMAL","PRECAUCIÓN","ALERTA","CRÍTICO"];
+  
+  document.getElementById("led").className = "led " + leds[nivelNum];
+  document.getElementById("alert-tag").className = "alert-level-tag " + tags[nivelNum];
+  document.getElementById("alert-tag").innerHTML = nombres[nivelNum];
+  document.getElementById("alert-resumen").innerHTML = datos.resumen;
+  
+  const alertasDiv = document.getElementById("alert-items");
+  if (datos.alertas && datos.alertas.length > 0) {
+    alertasDiv.innerHTML = datos.alertas.map(msg => `<div class="alert-item"><div class="ai-dot dot-1"></div><div class="ai-msg">${msg}</div></div>`).join('');
+  } else {
+    alertasDiv.innerHTML = '<div class="no-alerts">✅ Sin alertas activas</div>';
+  }
+  
+  document.getElementById("header-sub").innerHTML = `${p.nombre} · ${p.edad} años · Datos locales (simulador propio)`;
+}
+
+function actualizarHistorial() {
+  const track = document.getElementById("hist-track");
+  track.innerHTML = historialNiveles.map(h => `<div class="hist-bar hb-${h.nivel}" style="height:${6 + (h.nivel / 3) * 30}px" title="${h.hora}"></div>`).join('');
+}
+
+function agregarAlLog(mensaje) {
+  const logDiv = document.getElementById("mini-log");
+  const line = document.createElement("div");
+  line.className = "log-line";
+  line.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString()}</span><span>${mensaje}</span>`;
+  logDiv.insertBefore(line, logDiv.firstChild);
+  while (logDiv.children.length > 15) logDiv.removeChild(logDiv.lastChild);
+}
+
+renderPortadores();
+obtenerDatosReales();
+setInterval(obtenerDatosReales, 2000);
+</script>
+</body>
+</html>
